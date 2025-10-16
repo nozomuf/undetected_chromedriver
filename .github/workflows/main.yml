@@ -26,42 +26,33 @@ jobs:
 
       - name: ⚙️ Download Headless Chrome & Chromedriver (latest)
         run: |
-          set -e
+          echo "📥 Fetching latest ChromeDriver info..."
+          mkdir -p build
 
-          TARGET_VERSION="141.0.7390.78"
-          BASE_JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
-          
+          # Headless Chromium（Lambda用ビルド）を取得
+          curl -L https://github.com/shelfio/chrome-aws-lambda/releases/latest/download/headless-chromium -o build/headless-chromium
+          chmod +x build/headless-chromium
+
+          # jq がなければ入れる（Actions環境ではデフォルト入りだが保険）
+          sudo apt-get update -y && sudo apt-get install -y jq
+
+          # Chrome for Testing JSONを取得
+          JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
           echo "Fetching JSON..."
-          JSON=$(curl -s "$BASE_JSON_URL")
-          
-          if [ -z "$JSON" ]; then
-            echo "Error: Cannot fetch JSON from $BASE_JSON_URL"
-            exit 1
-          fi
-          
-          echo "Target ChromeDriver version: $TARGET_VERSION"
-          
-          # まず JSON 内にこのバージョンの情報があるか探す
-          MATCH=$(echo "$JSON" | jq -r --arg ver "$TARGET_VERSION" '.versions[] | select(.version == $ver)')
-          
-          if [ -z "$MATCH" ] || [ "$MATCH" = "null" ]; then
-            echo "Warning: version $TARGET_VERSION not found in JSON versions[]. Falling back to direct URL."
-            # 直接 URL を使う
-            DRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${TARGET_VERSION}/linux64/chromedriver-linux64.zip"
-          else
-            # JSON に存在するなら、downloads.chromedriver から platform=linux64 の URL を使う
-            DRIVER_URL=$(echo "$MATCH" | jq -r '.downloads.chromedriver[] | select(.platform == "linux64") | .url')
-            if [ -z "$DRIVER_URL" ] || [ "$DRIVER_URL" = "null" ]; then
-              echo "Warning: No linux64 download URL in JSON for version $TARGET_VERSION. Using direct URL."
-              DRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${TARGET_VERSION}/linux64/chromedriver-linux64.zip"
-            fi
-          fi
+          JSON=$(curl -s $JSON_URL)
 
+          # 安定版バージョンを抽出
+          VERSION=$(echo "$JSON" | jq -r '.channels.Stable.version')
+          DRIVER_URL=$(echo "$JSON" | jq -r '.channels.Stable.downloads.chromedriver[] | select(.platform=="linux64") | .url')
+
+          echo "Target ChromeDriver version: $VERSION"
+          echo "Download URL: $DRIVER_URL"
+
+          # ダウンロードと展開
           curl -L "$DRIVER_URL" -o chromedriver.zip
-
           unzip chromedriver.zip -d build/
           mv build/chromedriver-linux64/chromedriver build/chromedriver
-          rm -rf chromedriver.zip build/chromedriver-linux64
+          rm -rf build/chromedriver-linux64 chromedriver.zip
 
           chmod +x build/chromedriver
       - name: 🧩 Add lambda function code
