@@ -31,31 +31,20 @@ jobs:
           chmod +x build/headless-chromium
 
           # ---- 最新の ChromeDriver を自動取得 ----
-          echo "Fetching latest ChromeDriver version..."
-          
-          # 正しいキー名 'Stable' を使う
+          echo "Fetching latest ChromeDriver version with valid linux64 download..."
+
           LATEST=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json \
-            | jq -r '.channels.Stable.version')
+            | jq -r '.versions[] | select(.downloads.chromedriver != null) | .downloads.chromedriver[] | select(.platform == "linux64") | .url' \
+            | head -n1 | sed -E 's#.*/chrome-for-testing/([^/]+)/.*#\1#')
           
-          echo "Latest version: $LATEST"
+          echo "Latest version with chromedriver: $LATEST"
           
-          # バージョンが取得できなければ終了
-          if [ "$LATEST" = "null" ] || [ -z "$LATEST" ]; then
-            echo "❌ Error: ChromeDriver version could not be determined."
-            exit 1
-          fi
-          
-          # URL を取得（バージョン一致、かつ platform=linux64）
+          # URL 再取得
           DRIVER_URL=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json \
             | jq -r --arg ver "$LATEST" '.versions[] | select(.version == $ver) | .downloads.chromedriver[] | select(.platform == "linux64") | .url')
           
           echo "Download URL: $DRIVER_URL"
-          
-          # URL が取得できなければエラー
-          if [ -z "$DRIVER_URL" ]; then
-            echo "❌ Error: ChromeDriver download URL not found."
-            exit 2
-          fi
+
           curl -L "$DRIVER_URL" -o chromedriver.zip
 
           unzip chromedriver.zip -d build/
