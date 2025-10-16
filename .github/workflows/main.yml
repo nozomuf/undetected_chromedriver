@@ -32,14 +32,17 @@ jobs:
 
           # ---- 最新の ChromeDriver を自動取得 ----
           echo "Fetching latest ChromeDriver version..."
+          
+          # 最新のバージョンを取得
           LATEST=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json \
-            | grep -oP '(?<="stable":\s*\{"version":\s*")[^"]+')
+            | jq -r '.channels.stable.version')
+          
           echo "Latest version: $LATEST"
-
+          
+          # 該当バージョンの chromedriver-linux64.zip の URL を取得
           DRIVER_URL=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json \
-            | grep -A20 "\"${LATEST}\"" \
-            | grep -oP '(?<="url":\s*")[^"]*chromedriver-linux64.zip' \
-            | head -n1)
+            | jq -r --arg ver "$LATEST" '.versions[] | select(.version == $ver) | .downloads.chromedriver[] | select(.platform == "linux64") | .url')
+          
 
           echo "Downloading ChromeDriver from: $DRIVER_URL"
           curl -L "$DRIVER_URL" -o chromedriver.zip
