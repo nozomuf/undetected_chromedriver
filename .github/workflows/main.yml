@@ -1,65 +1,57 @@
-name: Build Lambda Package
+name: Build Lambda Package (Python 3.9 + undetected-chromedriver)
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ main ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout repository
+      - name: 🧩 Checkout
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
+      - name: 🐍 Setup Python 3.9
         uses: actions/setup-python@v5
         with:
           python-version: "3.9"
 
       - name: 📦 Install dependencies
         run: |
-          mkdir -p build
-          pip install undetected-chromedriver -t build/
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -t build/
 
-      - name: ⚙️ Download Headless Chrome & Chromedriver (latest)
+      - name: ⚙️ Download Headless Chrome & Chromedriver (latest stable)
         run: |
           echo "📥 Fetching latest ChromeDriver info..."
           mkdir -p build
+          sudo apt-get update -y && sudo apt-get install -y jq unzip
 
-          # Headless Chromium（Lambda用ビルド）を取得
-          curl -L https://github.com/shelfio/chrome-aws-lambda/releases/latest/download/headless-chromium -o build/headless-chromium
-          chmod +x build/headless-chromium
-
-          # jq がなければ入れる（Actions環境ではデフォルト入りだが保険）
-          sudo apt-get update -y && sudo apt-get install -y jq
-
-          # Chrome for Testing JSONを取得
+          # 最新の ChromeDriver 情報を取得
           JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
-          echo "Fetching JSON..."
           JSON=$(curl -s $JSON_URL)
-
-          # 安定版バージョンを抽出
           VERSION=$(echo "$JSON" | jq -r '.channels.Stable.version')
           DRIVER_URL=$(echo "$JSON" | jq -r '.channels.Stable.downloads.chromedriver[] | select(.platform=="linux64") | .url')
 
           echo "Target ChromeDriver version: $VERSION"
           echo "Download URL: $DRIVER_URL"
 
-          # ダウンロードと展開
+          # headless-chromium と chromedriver をダウンロード
+          curl -L https://github.com/shelfio/chrome-aws-lambda/releases/latest/download/headless-chromium -o build/headless-chromium
+          chmod +x build/headless-chromium
+
           curl -L "$DRIVER_URL" -o chromedriver.zip
           unzip chromedriver.zip -d build/
           mv build/chromedriver-linux64/chromedriver build/chromedriver
           rm -rf build/chromedriver-linux64 chromedriver.zip
 
           chmod +x build/chromedriver
-      - name: 🧩 Add lambda function code
-        run: |
-          cp lambda_function.py build/
 
-      - name: 🗜️ Create deployment package
+      - name: 📁 Copy Lambda handler
+        run: cp lambda_function.py build/
+
+      - name: 🗜️ Create deployment ZIP
         run: |
           cd build
           zip -r ../lambda_package.zip .
