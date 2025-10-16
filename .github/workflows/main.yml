@@ -26,45 +26,36 @@ jobs:
 
       - name: ⚙️ Download Headless Chrome & Chromedriver (latest)
         run: |
-          echo "Fetching ChromeDriver download URL..."
+          set -e
 
-          JSON=$(curl -s https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json)
+          TARGET_VERSION="141.0.7390.78"
+          BASE_JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
           
-          # バージョンの推定（channels.Stable or channels.Stable.version 等を試す）
-          LATEST=$(echo "$JSON" | jq -r '.channels.Stable.version // empty')
+          echo "Fetching JSON..."
+          JSON=$(curl -s "$BASE_JSON_URL")
           
-          if [ -z "$LATEST" ]; then
-            echo "Error: Could not get latest version from channels.Stable.version"
+          if [ -z "$JSON" ]; then
+            echo "Error: Cannot fetch JSON from $BASE_JSON_URL"
             exit 1
           fi
           
-          echo "Latest version: $LATEST"
+          echo "Target ChromeDriver version: $TARGET_VERSION"
           
-          # 該当するバージョンの entry を探す
-          VERSION_OBJ=$(echo "$JSON" | jq --arg ver "$LATEST" '.versions[] | select(.version == $ver)')
+          # まず JSON 内にこのバージョンの情報があるか探す
+          MATCH=$(echo "$JSON" | jq -r --arg ver "$TARGET_VERSION" '.versions[] | select(.version == $ver)')
           
-          if [ -z "$VERSION_OBJ" ] || [ "$VERSION_OBJ" = "null" ]; then
-            echo "Error: No matching version entry for $LATEST"
-            exit 2
+          if [ -z "$MATCH" ] || [ "$MATCH" = "null" ]; then
+            echo "Warning: version $TARGET_VERSION not found in JSON versions[]. Falling back to direct URL."
+            # 直接 URL を使う
+            DRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${TARGET_VERSION}/linux64/chromedriver-linux64.zip"
+          else
+            # JSON に存在するなら、downloads.chromedriver から platform=linux64 の URL を使う
+            DRIVER_URL=$(echo "$MATCH" | jq -r '.downloads.chromedriver[] | select(.platform == "linux64") | .url')
+            if [ -z "$DRIVER_URL" ] || [ "$DRIVER_URL" = "null" ]; then
+              echo "Warning: No linux64 download URL in JSON for version $TARGET_VERSION. Using direct URL."
+              DRIVER_URL="https://storage.googleapis.com/chrome-for-testing-public/${TARGET_VERSION}/linux64/chromedriver-linux64.zip"
+            fi
           fi
-          
-          # downloads.chromedriver 配列を取得
-          DRIVERS=$(echo "$VERSION_OBJ" | jq -r '.downloads.chromedriver // empty')
-          
-          if [ -z "$DRIVERS" ]; then
-            echo "Error: downloads.chromedriver is missing"
-            exit 3
-          fi
-          
-          # linux64 用 URL を探す
-          DRIVER_URL=$(echo "$DRIVERS" | jq -r '.[] | select(.platform == "linux64") | .url' | head -n1)
-          
-          if [ -z "$DRIVER_URL" ]; then
-            echo "Error: no linux64 chromedriver URL found"
-            exit 4
-          fi
-          
-          echo "Download URL: $DRIVER_URL"
 
           curl -L "$DRIVER_URL" -o chromedriver.zip
 
