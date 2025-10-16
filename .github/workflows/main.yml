@@ -1,0 +1,52 @@
+name: Build Lambda Package
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: 📦 Install dependencies
+        run: |
+          mkdir -p build
+          pip install undetected-chromedriver -t build/
+
+      - name: ⚙️ Download Headless Chrome & Chromedriver
+        run: |
+          # Lambda 用の headless-chromium と chromedriver をダウンロード
+          # ※ chrome-aws-lambda プロジェクトのビルド済みバイナリを利用
+          curl -L https://github.com/shelfio/chrome-aws-lambda/releases/latest/download/headless-chromium -o build/headless-chromium
+          curl -L https://chromedriver.storage.googleapis.com/131.0.6778.108/chromedriver_linux64.zip -o chromedriver.zip
+          unzip chromedriver.zip -d build/
+          rm chromedriver.zip
+
+          chmod +x build/headless-chromium
+          chmod +x build/chromedriver
+
+      - name: 🧩 Add lambda function code
+        run: |
+          cp lambda_function.py build/
+
+      - name: 🗜️ Create deployment package
+        run: |
+          cd build
+          zip -r ../lambda_package.zip .
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda_package
+          path: lambda_package.zip
