@@ -1,63 +1,47 @@
-name: Build Lambda Package (Python 3.9 + undetected-chromedriver)
+name: Build Lambda ZIP
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  build:
+  build-lambda:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🧩 Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repo
+        uses: actions/checkout@v3
 
-      - name: 🐍 Setup Python 3.9
-        uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.9"
+          python-version: '3.9'
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt -t build/
+          pip install --target build -r requirements.txt
 
-      - name: ⚙️ Download Headless Chrome & Chromedriver (latest stable)
+      - name: Download headless-chromium
         run: |
-          echo "📥 Fetching latest ChromeDriver info..."
           mkdir -p build
-          sudo apt-get update -y && sudo apt-get install -y jq unzip
-
-          # 最新の ChromeDriver 情報を取得
-          JSON_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
-          JSON=$(curl -s $JSON_URL)
-          VERSION=$(echo "$JSON" | jq -r '.channels.Stable.version')
-          DRIVER_URL=$(echo "$JSON" | jq -r '.channels.Stable.downloads.chromedriver[] | select(.platform=="linux64") | .url')
-
-          echo "Target ChromeDriver version: $VERSION"
-          echo "Download URL: $DRIVER_URL"
-
-          # headless-chromium と chromedriver をダウンロード
           curl -L https://github.com/shelfio/chrome-aws-lambda/releases/latest/download/headless-chromium -o build/headless-chromium
-          chmod +x build/headless-chromium
+          chmod 755 build/headless-chromium
 
-          curl -L "$DRIVER_URL" -o chromedriver.zip
+      - name: Download latest ChromeDriver
+        run: |
+          CHROME_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE)
+          curl -L https://chromedriver.storage.googleapis.com/$CHROME_VERSION/chromedriver_linux64.zip -o chromedriver.zip
           unzip chromedriver.zip -d build/
-          mv build/chromedriver-linux64/chromedriver build/chromedriver
-          rm -rf build/chromedriver-linux64 chromedriver.zip
+          rm chromedriver.zip
+          chmod 755 build/chromedriver
 
-          chmod +x build/chromedriver
+      - name: Copy Lambda function
+        run: |
+          cp lambda_function.py build/
 
-      - name: 📁 Copy Lambda handler
-        run: cp lambda_function.py build/
-
-      - name: 🗜️ Create deployment ZIP
+      - name: Create zip
         run: |
           cd build
-          zip -r ../lambda_package.zip .
-
-      - name: 📤 Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: lambda_package
-          path: lambda_package.zip
+          zip -r ../lambda.zip .
