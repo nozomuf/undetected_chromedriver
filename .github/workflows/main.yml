@@ -1,4 +1,4 @@
-ame: Build Lambda ZIP
+name: Build Lambda ZIP
 
 on:
   push:
