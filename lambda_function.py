@@ -1,67 +1,70 @@
 import json
-import undetected_chromedriver as uc
+import os
+import shutil
+import stat
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+import undetected_chromedriver.v2 as uc
+from selenium.webdriver.chrome.options import Options
+
+# Lock無効化（Lambda環境でPermissionError回避）
+import undetected_chromedriver.v2.patcher as patcher
+patcher.Lock = None
 
 def lambda_handler(event, context):
     try:
-        # 🔹 API GatewayからのPOST JSONを取得
+        # POST bodyを取得
         if event.get("body"):
             body = json.loads(event["body"])
         else:
-            body = event  # テスト時など直接渡された場合
+            body = event
 
-        url = body.get("url")
-        kwd = body.get("kwd")
+        # qがない場合は初期値を設定
+        q = body.get("q", "すすきの ランチ")
 
-        if not url or not kwd:
-            return {
-                "statusCode": 400,
-                "body": json.dumps({"error": "Missing 'url' or 'kwd' parameter"})
-            }
+        # URL固定
+        url = "https://www.google.com/search"
 
-        # 🔹 Chromeの設定
-        options = uc.ChromeOptions()
-        options.binary_location = "/var/task/headless-chromium"
-        options.add_argument("--headless=new")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--single-process")
+        # Lambdaで書き込み可能な/tmpにchromedriverとchromeバイナリをコピー
+        tmp_driver = "/tmp/chromedriver"
+        tmp_chrome = "/tmp/headless-chromium"
 
-        # 🔹 ドライバ起動
+        shutil.copy("/var/task/chromedriver", tmp_driver)
+        shutil.copy("/var/task/headless-chromium", tmp_chrome)
+        os.chmod(tmp_driver, stat.S_IRWXU)
+        os.chmod(tmp_chrome, stat.S_IRWXU)
+
+        # Chromeオプション
+        chrome_options = Options()
+        chrome_options.binary_location = tmp_chrome
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--single-process")
+
+        # Chrome起動
         driver = uc.Chrome(
-            driver_executable_path="/var/task/chromedriver",
-            options=options
+            driver_executable_path=tmp_driver,
+            options=chrome_options,
+            headless=True
         )
 
-        # 🔹 指定URLを開く
+        # Google検索
         driver.get(url)
-
-        # 🔹 キーワード入力例（検索欄がある想定）
-        try:
-            search_box = driver.find_element(By.NAME, "q")
-            search_box.clear()
-            search_box.send_keys(kwd)
-            search_box.send_keys(Keys.RETURN)
-        except Exception:
-            pass  # 入力欄がない場合も無視
+        search_box = driver.find_element(By.NAME, "q")
+        search_box.clear()
+        search_box.send_keys(q)
+        search_box.send_keys(Keys.RETURN)
 
         html = driver.page_source
         driver.quit()
 
-        # 🔹 レスポンスを返す
         return {
             "statusCode": 200,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({
-                "url": url,
-                "kwd": kwd,
-                "html": html,
-            })
+            "body": json.dumps({"q": q, "html_length": len(html)})
         }
 
     except Exception as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
