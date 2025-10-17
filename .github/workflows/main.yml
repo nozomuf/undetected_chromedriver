@@ -31,7 +31,6 @@ jobs:
 
       - name: Download latest ChromeDriver
         run: |
-          # 最新安定版を取得
           CHROME_VERSION=$(curl -sS https://chromedriver.storage.googleapis.com/LATEST_RELEASE)
           curl -L https://chromedriver.storage.googleapis.com/$CHROME_VERSION/chromedriver_linux64.zip -o chromedriver.zip
           unzip chromedriver.zip -d build/
@@ -39,10 +38,15 @@ jobs:
           chmod 755 build/chromedriver
 
       - name: Copy Lambda function
-        run: |
-          cp lambda_function.py build/
+        run: cp lambda_function.py build/
 
       - name: Create Lambda ZIP
         run: |
           cd build
           zip -r ../lambda.zip .
+
+      - name: Upload Lambda ZIP as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: lambda-zip
+          path: lambda.zip
